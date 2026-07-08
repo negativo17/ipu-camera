@@ -79,6 +79,49 @@ The IPU6 adaptor already knows how to load the `ipu7x` / `ipu75xa` plugins (Luna
 
 The two repositories ship slightly different HAL headers under `/usr/include/libcamhal/`: `ipu7-camera-hal` adds `ParamDataType.h`, `subway_autogen.h`, `tnr7us_parameters_definition.h` and `PerfettoTrace.h`, and its `ICamera.h` differs from the IPU6 one. Since the shared `libcamhal-devel` package (built from `ipu7-camera-hal`) is the one that provides these headers, the IPU7 header set is what gets installed for both.
 
+## The CVS / vision sensing controller (IPU7 / Lunar Lake and newer)
+
+On Lunar Lake and newer there is an extra layer below the IPU: [intel/vision-drivers](https://github.com/intel/vision-drivers) is the Intel **CVS** (Camera Vision Sensing) controller driver — the successor to the older **IVSC** (Intel Visual Sensing Controller). It provides `intel_cvs.ko` and rides on the LJCA USB bridge (GPIO ACPI ID `INTC10B5`). It is packaged here as both `vision-kmod` (akmod) and `dkms-vision`.
+
+What the module does, briefly: it drives the always-on vision sensing controller that sits between the MIPI sensor and the host IPU — handing sensor ownership from the controller to the host so the IPU can stream, driving the hardware privacy path (the privacy LED), and backing the low-power human-presence features (walk-away lock, adaptive dimming) that run without the host.
+
+### Where it sits in the camera pipeline
+
+```
+                 ┌────────────────┐
+   MIPI sensor ──┤ VSC / IVSC /   ├──► IPU (ISYS/PSYS) ──► libcamhal ──► your stack
+   (ov02c10 …)   │  CVS controller│
+                 └───────┬────────┘
+                         └──► low-power presence/context sensing (walk-away lock,
+                              adaptive dimming, "Studio Effects"), runs w/o the host
+```
+
+The controller can own the sensor independently of the OS for human-presence detection, and it provides the hardware privacy path. Crucially, **the sensor is shared** — the host IPU can only stream after the VSC/CVS hands ownership over. If that handoff driver isn't present or working, the IPU camera simply won't stream: the sensor stays owned by the controller (privacy LED can stay stuck on, sensor invisible to the host).
+
+This is the same role as the `CONFIG_INTEL_VSC` path in the `ov02c10` sensor driver (the `cvfd_ids` `INTC1059` / `INTC1095` / `INTC100A` / `INTC10CF` and the `privacy_status` control). On kernels < 6.6 the sensor driver did the VSC acquire/release itself; on ≥ 6.6 that moved out to a separate driver set (`mei-vsc`, `ivsc-csi` / `mei_csi`, `ljca`), most of which is now mainline.
+
+### Generation lineage
+
+| Platform | IPU | Sensing controller | Driver |
+|---|---|---|---|
+| Tiger Lake / Alder Lake / Raptor Lake / Meteor Lake | IPU6 | IVSC | `mei-vsc` / `ivsc-csi` (mostly mainline now) |
+| Lunar Lake and newer | IPU7 / IPU8 | CVS | `intel/vision-drivers` (`intel_cvs.ko`), out-of-tree |
+
+So for the IPU7/IPU8 packages, camera enablement is not just IPU driver + sensor + HAL — on CVS-equipped machines you also need this CVS/vision driver + LJCA, or the camera never releases to the host. It is orthogonal to the libcamhal / PipeWire-plugin layer (that is all above libcamhal); it is a hard dependency lower in the stack. This is why `dkms-ipu7` requires `dkms-vision` and `ipu7-kmod` requires `vision-kmod`.
+
+### Mainline status
+
+Don't conflate two separate things:
+
+- The **IPU7 driver itself is mainline** as of Linux 6.17 (merged for Lunar Lake / Panther Lake webcams) — which is why `dkms-ipu7` / `ipu7-kmod` only build the out-of-tree `intel-ipu7-psys` module on ≥ 6.17 kernels.
+- The **CVS sensing-controller driver (`intel_cvs`) is not mainline** — it lives only in `intel/vision-drivers` (shipped here as DKMS/akmod). Intel issue [#36](https://github.com/intel/vision-drivers/issues/36) explicitly asks for it to be upstreamed, flagging it as "critical for IPU7 camera."
+
+So on CVS-equipped Lunar Lake / Panther Lake machines, even a kernel new enough to have IPU7 in-tree still needs the out-of-tree `intel_cvs` (+ LJCA/USBIO) to release the sensor to the host; without it the camera stays owned by the controller (LED stuck on, sensor invisible).
+
+It is also not just "load the module": reports on the tracker show it currently needs patches for real Lunar Lake bring-up — `SET_HOST_IDENTIFIER` returning `-EIO` on protocol 1.0 over the USBIO/I2C bridge, auto-release after probe so the LED doesn't stay on, and a `sensor_owner` sysfs re-acquire path. Expect to ship (and possibly carry patches on) `intel_cvs` via DKMS/akmod for the foreseeable future.
+
+Two things worth confirming per target machine: (1) whether the IPU7/IPU8 laptop actually has CVS at all (some wire the sensor straight to the IPU), and (2) whether `intel_cvs` is still out-of-tree for the kernel baseline in use or has been upstreamed by then.
+
 ## Caps note
 
 This `icamerasrc` build emits **only** DMABuf with a DRM format: `video/x-raw(memory:DMABuf), format=DMA_DRM, drm-format=NV12` (linear).
