@@ -46,11 +46,16 @@ $ media-ctl -d /dev/media2 -p | grep -i ov02c10
 
 ### PSYS device permissions
 
-The processing side exposes `/dev/ipu-psys0`, which by default is `crw------- root root` — only root can open it, so pipelines fail with `Failed to open PSYS, error: Permission denied`. Grant the `video` group and a uaccess ACL (matching the ISYS `/dev/video*` nodes) with a udev rule:
+The processing side exposes `/dev/ipu-psys0`, which by default is `crw------- root root` — only root can open it, so pipelines fail with `Failed to open PSYS, error: Permission denied`.
+
+Add a uaccess ACL (matching the ISYS `/dev/video*` nodes) with a udev rule. Each HAL package ships its own rule matching its PSYS subsystem — `72-ipu6-psys.rules` from `ipu6-camera-hal` and `72-ipu7-psys.rules` from `ipu7-camera-hal`. There is no separate IPU8 rule: IPU8 (Nova Lake) is driven by the same `intel-ipu7-psys` module and registers under the `intel-ipu7-psys` subsystem, so the IPU7 rule covers it too.
 
 ```bash
 $ cat /usr/lib/udev/rules.d/72-ipu6-psys.rules
 SUBSYSTEM=="intel-ipu6-psys", TAG+="uaccess"
+
+$ cat /usr/lib/udev/rules.d/72-ipu7-psys.rules
+SUBSYSTEM=="intel-ipu7-psys", TAG+="uaccess"
 ```
 
 Verify that the device files have the proper ACL:
