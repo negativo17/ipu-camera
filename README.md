@@ -1,4 +1,8 @@
-# IPU6 Camera with icamerasrc (GStreamer)
+# Intel IPU cameras with proprietary stack
+
+This documents running Intel IPU MIPI cameras on Fedora with the proprietary userspace stack (the `libcamhal` HAL, firmware and proprietary imaging libraries) together with the IPU6, IPU7 and IPU8 kernel modules and the `icamerasrc` GStreamer plugin. It covers IPU6 (Tiger Lake through Meteor Lake) and IPU7 / IPU8 (Lunar Lake and newer).
+
+## Test platform
 
 Using the Intel IPU6 MIPI camera (e.g. OV02C10 sensor) via the `icamerasrc` GStreamer plugin and the IPU6 camera HAL.
 
@@ -16,12 +20,21 @@ On this particular laptop, these are the components required to get a full worki
 
 ## Prerequisites
 
-Install the IPU6 stack:
+Install the IPU camera stack. The easiest way is one of the two metapackages, which pull in the whole userspace-plus-kernel stack in the matching kernel-module flavour:
 
-- `ipu6-camera-bins` — firmware plus proprietary binaries.
-- `ipu6-camera-hal` — camera HAL and per-platform configs (`/usr/share/camera/`).
+- `ipu-camera-dkms` — kernel modules built through DKMS.
+- `ipu-camera-akmod` — kernel modules built through akmods.
+
+Either metapackage pulls in the full stack for both IPU6 and IPU7/IPU8. The components, and the dependencies they drag in automatically, are:
+
+- `ipu7-camera-hal` — the shared `libcamhal` adaptor plus the IPU7/IPU8 HAL plugins and per-platform configs. It automatically pulls in `ipu7-camera-bins` (firmware and proprietary binaries), which in turn pulls in `intel-ipu8-firmware`.
+- `ipu6-camera-hal` — the IPU6 HAL plugins and per-platform configs (`/usr/share/camera/`). Note that this package no longer ships a camera HAL of its own: the `libcamhal` adaptor comes from `ipu7-camera-hal`. It automatically pulls in `ipu6-camera-bins` (firmware and proprietary binaries).
+- `dkms-ipu7` / `akmod-ipu7` — the out-of-tree IPU7 kernel module (`intel-ipu7-psys`). These automatically pull in `dkms-vision` / `akmod-vision`, the Intel CVS (`intel_cvs`) sensing-controller module (see below).
+- `dkms-ipu6` / `akmod-ipu6` — the IPU6 kernel modules, including the sensor drivers.
+
+The `icamerasrc` GStreamer element is separate — it is not pulled in by the metapackages:
+
 - `gstreamer1-plugin-icamerasrc` — the `icamerasrc` GStreamer element.
-- `dkms-ipu6` or `akmod-ipu6` — kernel modules including the sensor drivers.
 
 Confirm the sensor is bound in the media graph (should show `[ENABLED,IMMUTABLE]`). For example:
 
@@ -121,6 +134,14 @@ So on CVS-equipped Lunar Lake / Panther Lake machines, even a kernel new enough 
 It is also not just "load the module": reports on the tracker show it currently needs patches for real Lunar Lake bring-up — `SET_HOST_IDENTIFIER` returning `-EIO` on protocol 1.0 over the USBIO/I2C bridge, auto-release after probe so the LED doesn't stay on, and a `sensor_owner` sysfs re-acquire path. Expect to ship (and possibly carry patches on) `intel_cvs` via DKMS/akmod for the foreseeable future.
 
 Two things worth confirming per target machine: (1) whether the IPU7/IPU8 laptop actually has CVS at all (some wire the sensor straight to the IPU), and (2) whether `intel_cvs` is still out-of-tree for the kernel baseline in use or has been upstreamed by then.
+
+## The USBIO / LJCA bridge (mainline)
+
+On some IPU laptops the camera sensor's control interface (I2C) and its GPIO lines (power, reset, privacy) are not on the SoC's own I2C/GPIO controllers but sit behind a small USB-attached bridge — the Intel USB-IO / LJCA bridge. The out-of-tree [intel/usbio-drivers](https://github.com/intel/usbio-drivers) provide the MFD plus GPIO / I2C / SPI cell drivers for that bridge, so the host (and the CVS controller) can reach the sensor's control and GPIO lines over USB.
+
+These are **mainline now**: the equivalent drivers ship in the upstream kernel (the `usb-ljca` family — `usb-ljca`, `gpio-ljca`, `i2c-ljca`, `spi-ljca` — plus the newer USBIO variants), so on a current Fedora kernel you do not need the out-of-tree package: the bridge is bound automatically and its GPIO/I2C controllers appear for the sensor and ipu-bridge to use. Because it is upstream, there is no `usbio` DKMS/akmod package in this stack — a recent kernel is enough.
+
+It only matters on machines whose sensor or CVS controller is wired through the USB bridge. Where the sensor sits directly on a native SoC I2C/GPIO controller, the bridge drivers are not involved at all.
 
 ## Caps note
 
