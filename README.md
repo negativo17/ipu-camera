@@ -140,13 +140,46 @@ It is also not just "load the module": reports on the tracker show it currently 
 
 Two things worth confirming per target machine: (1) whether the IPU7/IPU8 laptop actually has CVS at all (some wire the sensor straight to the IPU), and (2) whether `intel_cvs` is still out-of-tree for the kernel baseline in use or has been upstreamed by then.
 
-## The USBIO / LJCA bridge (mainline)
+## The IVSC sensing controller (IPU6, mainline)
 
-On some IPU laptops the camera sensor's control interface (I2C) and its GPIO lines (power, reset, privacy) are not on the SoC's own I2C/GPIO controllers but sit behind a small USB-attached bridge — the Intel USB-IO / LJCA bridge. The out-of-tree [intel/usbio-drivers](https://github.com/intel/usbio-drivers) provide the MFD plus GPIO / I2C / SPI cell drivers for that bridge, so the host (and the CVS controller) can reach the sensor's control and GPIO lines over USB.
+On the IPU6 generation the counterpart of CVS is the older **IVSC** (Intel Visual Sensing Controller). It is provided by [intel/ivsc-driver](https://github.com/intel/ivsc-driver): `mei-vsc` (the MEI transport to the controller), `ivsc-csi` (CSI-2 routing and the sensor-ownership handoff) and `ivsc-ace` (the Algorithm Context Engine that arbitrates ownership). The same repo also bundles the older **LJCA** USB-bridge drivers (`usb-ljca` and its `gpio` / `i2c` / `spi` cells).
 
-These are **mainline now**: the equivalent drivers ship in the upstream kernel (the `usb-ljca` family — `usb-ljca`, `gpio-ljca`, `i2c-ljca`, `spi-ljca` — plus the newer USBIO variants), so on a current Fedora kernel you do not need the out-of-tree package: the bridge is bound automatically and its GPIO/I2C controllers appear for the sensor and ipu-bridge to use. Because it is upstream, there is no `usbio` DKMS/akmod package in this stack — a recent kernel is enough.
+Its role is exactly the CVS role one generation earlier: it mediates sensor ownership between the always-on sensing controller and the host IPU and provides the hardware privacy path — the IPU can only stream once IVSC hands the sensor over.
 
-It only matters on machines whose sensor or CVS controller is wired through the USB bridge. Where the sensor sits directly on a native SoC I2C/GPIO controller, the bridge drivers are not involved at all.
+These are **mainline now**: the IVSC media drivers (`mei-vsc`, `ivsc-csi`, `ivsc-ace`) landed in Linux 6.8 and the LJCA bridge in 6.7, so on a current Fedora kernel there is no out-of-tree ivsc-driver / DKMS / akmod package in this stack — a recent kernel is enough. It is the IPU7-era successor, CVS / `intel_cvs`, that is still out-of-tree (see above).
+
+## The USB bridge: LJCA and USBIO (mainline)
+
+On some IPU laptops the camera sensor's control interface (I2C) and its GPIO lines (power, reset, privacy) are not on the SoC's own I2C/GPIO controllers but sit behind a small USB-attached bridge, so the host (and the sensing controller) reaches the sensor over USB. There are two generations of that bridge, each with its own driver set:
+
+- **LJCA** (La Jolla Cove Adapter) — the older bridge. Its drivers (`usb-ljca` plus the `gpio-ljca` / `i2c-ljca` / `spi-ljca` cells) are bundled in [intel/ivsc-driver](https://github.com/intel/ivsc-driver) and have been mainline since Linux 6.7.
+- **USBIO** — the newer USB IO-expander used on Meteor Lake and newer (Arrow Lake, Lunar Lake, Panther Lake). [intel/usbio-drivers](https://github.com/intel/usbio-drivers) provides `usbio` (bridge) plus `gpio-usbio` / `i2c-usbio`; these are mainline as of Linux 6.18.
+
+Because both are upstream, there is no `ljca` / `usbio` DKMS / akmod package in this stack — a recent kernel is enough: the bridge binds automatically and its GPIO/I2C controllers appear for the sensor and `ipu-bridge` to use. It only matters on machines whose sensor or sensing controller is wired through the USB bridge; where the sensor sits directly on a native SoC I2C/GPIO controller, the bridge drivers are not involved at all.
+
+## Kernel modules and mainline status
+
+Where every module involved lives, and — if it has been merged upstream — since which mainline kernel version. The rows marked *out-of-tree* are the only ones this stack still ships as DKMS / akmod; everything else comes from a recent kernel.
+
+| Project | Kernel module | In mainline since |
+|---|---|---|
+| **vision** — [intel/vision-drivers](https://github.com/intel/vision-drivers) | `intel_cvs` | *out-of-tree* (not upstreamed) |
+| **usbio** — [intel/usbio-drivers](https://github.com/intel/usbio-drivers) | `usbio` | 6.18 |
+| | `gpio-usbio` | 6.18 |
+| | `i2c-usbio` | 6.18 |
+| **ipu6 devices** — [intel/ipu6-drivers](https://github.com/intel/ipu6-drivers) | `intel-ipu6` | 6.10 |
+| | `intel-ipu6-isys` | 6.10 |
+| | `intel-ipu6-psys` | *out-of-tree* |
+| | `ipu-bridge` (shared helper) | 6.6 |
+| **ipu7 devices** — [intel/ipu7-drivers](https://github.com/intel/ipu7-drivers) | `intel-ipu7` | 6.17 |
+| | `intel-ipu7-isys` | 6.17 |
+| | `intel-ipu7-psys` | *out-of-tree* |
+| **ivsc** — [intel/ivsc-driver](https://github.com/intel/ivsc-driver) | `mei-vsc` | 6.8 |
+| | `ivsc-csi` (repo `mei_csi`) | 6.8 |
+| | `ivsc-ace` (repo `mei_ace`) | 6.8 |
+| | `usb-ljca` + `gpio-ljca` / `i2c-ljca` / `spi-ljca` (repo `ljca`) | 6.7 |
+
+So on a current Fedora kernel the only out-of-tree modules left are the two `*-psys` modules (built by `dkms-ipu6` / `dkms-ipu7` or their akmods) and `intel_cvs` (built by `dkms-vision` / `akmod-vision`) — everything else (IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO) is upstream. The ivsc-driver repo also carries a few legacy/debug modules (`intel_vsc`, `mei_pse`, `mei_ace_debug`) that were never upstreamed and are not used here.
 
 ## Caps note
 
