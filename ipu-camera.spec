@@ -2,7 +2,7 @@
 
 Name:           ipu-camera
 Version:        1
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Metapackages for the Intel IPU MIPI camera stack
 License:        MIT
 URL:            https://github.com/negativo17/ipu-camera
@@ -51,11 +51,14 @@ install -p -m 0644 %{SOURCE0} README.md
 %install
 
 %files dkms
-%doc README.md
+%doc README.md libcamera.md
 
 %files akmod
-%doc README.md
+%doc README.md libcamera.md
 
 %changelog
+* Fri Jul 10 2026 Simone Caronni <negativo17@gmail.com> - 1-2
+- Add libcamera.md.
+
 * Wed Jul 08 2026 Simone Caronni <negativo17@gmail.com> - 1-1
 - First build.
