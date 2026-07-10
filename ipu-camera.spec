@@ -10,6 +10,7 @@ ExclusiveArch:  x86_64
 BuildArch:      noarch
 
 Source0:        README.md
+Source1:        libcamera.md
 
 %description
 This package provides metapackages that pull in the complete Intel IPU MIPI
@@ -44,7 +45,7 @@ kernel modules built through akmods.
 
 %prep
 %setup -q -c -T
-install -p -m 0644 %{SOURCE0} README.md
+install -p -m 0644 %{SOURCE0} %{SOURCE1} .
 
 %build
 
