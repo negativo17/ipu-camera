@@ -95,7 +95,15 @@ The IPU6 adaptor already knows how to load the `ipu7x` / `ipu75xa` plugins (Luna
 
 ### Headers
 
-The two repositories ship slightly different HAL headers under `/usr/include/libcamhal/`: `ipu7-camera-hal` adds `ParamDataType.h`, `subway_autogen.h`, `tnr7us_parameters_definition.h` and `PerfettoTrace.h`, and its `ICamera.h` differs from the IPU6 one. Since the shared `libcamhal-devel` package (built from `ipu7-camera-hal`) is the one that provides these headers, the IPU7 header set is what gets installed for both.
+The two repositories ship slightly different HAL headers under `/usr/include/libcamhal/`, `ipu7-camera-hal` adds:
+
+- `ParamDataType.h`
+- `subway_autogen.h`
+- `tnr7us_parameters_definition.h`
+- `PerfettoTrace.h`
+- `ICamera.h` (different from the IPU6 one)
+
+Since the shared `libcamhal-devel` package (built from `ipu7-camera-hal`) is the one that provides these headers, the IPU7 header set is what gets installed for both.
 
 ## The CVS / vision sensing controller (IPU7 / Lunar Lake and newer)
 
@@ -140,7 +148,7 @@ It is also not just "load the module": reports on the tracker show it currently 
 
 Two things worth confirming per target machine: (1) whether the IPU7/IPU8 laptop actually has CVS at all (some wire the sensor straight to the IPU), and (2) whether `intel_cvs` is still out-of-tree for the kernel baseline in use or has been upstreamed by then.
 
-## The IVSC sensing controller (IPU6, mainline)
+## The IVSC sensing controller (IPU6)
 
 On the IPU6 generation the counterpart of CVS is the older **IVSC** (Intel Visual Sensing Controller). It is provided by [intel/ivsc-driver](https://github.com/intel/ivsc-driver): `mei-vsc` (the MEI transport to the controller), `ivsc-csi` (CSI-2 routing and the sensor-ownership handoff) and `ivsc-ace` (the Algorithm Context Engine that arbitrates ownership). The same repo also bundles the older **LJCA** USB-bridge drivers (`usb-ljca` and its `gpio` / `i2c` / `spi` cells).
 
@@ -148,7 +156,7 @@ Its role is exactly the CVS role one generation earlier: it mediates sensor owne
 
 These are **mainline now**: the IVSC media drivers (`mei-vsc`, `ivsc-csi`, `ivsc-ace`) landed in Linux 6.8 and the LJCA bridge in 6.7, so on a current Fedora kernel there is no out-of-tree ivsc-driver / DKMS / akmod package in this stack — a recent kernel is enough. It is the IPU7-era successor, CVS / `intel_cvs`, that is still out-of-tree (see above).
 
-## The USB bridge: LJCA and USBIO (mainline)
+## The USB bridge: LJCA and USBIO
 
 On some IPU laptops the camera sensor's control interface (I2C) and its GPIO lines (power, reset, privacy) are not on the SoC's own I2C/GPIO controllers but sit behind a small USB-attached bridge, so the host (and the sensing controller) reaches the sensor over USB. There are two generations of that bridge, each with its own driver set:
 
@@ -161,25 +169,43 @@ Because both are upstream, there is no `ljca` / `usbio` DKMS / akmod package in 
 
 Where every module involved lives, and — if it has been merged upstream — since which mainline kernel version. The rows marked *out-of-tree* are the only ones this stack still ships as DKMS / akmod; everything else comes from a recent kernel.
 
-| Project | Kernel module | In mainline since |
-|---|---|---|
-| **vision** — [intel/vision-drivers](https://github.com/intel/vision-drivers) | `intel_cvs` | *out-of-tree* (not upstreamed) |
-| **usbio** — [intel/usbio-drivers](https://github.com/intel/usbio-drivers) | `usbio` | 6.18 |
+| Project | Kernel module | In mainline since | Pacakge |
+|---|---|---|---|
+| [intel/vision-drivers](https://github.com/intel/vision-drivers) | `intel_cvs` | *out-of-tree* | `dkms-vision`/`akmod-vision` |
+| [intel/usbio-drivers](https://github.com/intel/usbio-drivers) | `usbio` | 6.18 | Not needed |
 | | `gpio-usbio` | 6.18 |
 | | `i2c-usbio` | 6.18 |
-| **ipu6 devices** — [intel/ipu6-drivers](https://github.com/intel/ipu6-drivers) | `intel-ipu6` | 6.10 |
+| [intel/ipu6-drivers](https://github.com/intel/ipu6-drivers) | `intel-ipu6` | 6.10 | `dkms-ipu6`/`akmod-ipu6` |
 | | `intel-ipu6-isys` | 6.10 |
 | | `intel-ipu6-psys` | *out-of-tree* |
 | | `ipu-bridge` (shared helper) | 6.6 |
-| **ipu7 devices** — [intel/ipu7-drivers](https://github.com/intel/ipu7-drivers) | `intel-ipu7` | 6.17 |
+| | `ov01a10` | 6.8 |
+| | `ov2740` | 6.8 |
+| | `hi556` | 6.10 |
+| | `ov02c10` | 6.16 |
+| | `ov02e10` | 6.16 |
+| | `hm11b1` | *out-of-tree* |
+| | `ov01a1s` | *out-of-tree* |
+| | `hm2170` | *out-of-tree* |
+| | `hm2172` | *out-of-tree* |
+| | `gc5035` | *out-of-tree* |
+| | `ov05c10` | *out-of-tree* |
+| | `imx471` | *out-of-tree* |
+| | `s5k3j1` | *out-of-tree* |
+| [intel/ipu7-drivers](https://github.com/intel/ipu7-drivers) | `intel-ipu7` | 6.17 | `dkms-ipu7`/`akmod-ipu7` |
 | | `intel-ipu7-isys` | 6.17 |
 | | `intel-ipu7-psys` | *out-of-tree* |
-| **ivsc** — [intel/ivsc-driver](https://github.com/intel/ivsc-driver) | `mei-vsc` | 6.8 |
-| | `ivsc-csi` (repo `mei_csi`) | 6.8 |
-| | `ivsc-ace` (repo `mei_ace`) | 6.8 |
-| | `usb-ljca` + `gpio-ljca` / `i2c-ljca` / `spi-ljca` (repo `ljca`) | 6.7 |
+| [intel/ivsc-driver](https://github.com/intel/ivsc-driver) | `mei-vsc` | 6.8 | Not needed |
+| | `ivsc-csi` (old `mei_csi`) | 6.8 |
+| | `ivsc-ace` (old `mei_ace`) | 6.8 |
+| | `usb-ljca` (old `ljca`) | 6.7 |
+| | `gpio-ljca` | 6.7 |
+| | `i2c-ljca` | 6.7 |
+| | `spi-ljca` | 6.7 |
 
-So on a current Fedora kernel the only out-of-tree modules left are the two `*-psys` modules (built by `dkms-ipu6` / `dkms-ipu7` or their akmods) and `intel_cvs` (built by `dkms-vision` / `akmod-vision`) — everything else (IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO) is upstream. The ivsc-driver repo also carries a few legacy/debug modules (`intel_vsc`, `mei_pse`, `mei_ace_debug`) that were never upstreamed and are not used here.
+So on a current Fedora kernel most of the stack is upstream — IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO and the mainlined sensors. What this stack still builds out-of-tree is: the two `*-psys` modules (`dkms-ipu6` / `dkms-ipu7` or their akmods), `intel_cvs` (`dkms-vision` / `akmod-vision`), and the camera sensors that were never upstreamed — `hm11b1`, `ov01a1s`, `hm2170`, `hm2172`, `gc5035`, `ov05c10`, `imx471`, `s5k3j1` (the last three only build on kernels ≥ 6.8 / 6.10). The sensor versions above are taken from the `ipu6-drivers` `dkms.conf` gating (there are no sensors in `ipu7-drivers`).
+
+The `ivsc-driver` repo also carries a few legacy/debug modules (`intel_vsc`, `mei_pse`, `mei_ace_debug`) that were never upstreamed and are not used here.
 
 ## Caps note
 
@@ -189,6 +215,8 @@ This `icamerasrc` build emits **only** DMABuf with a DRM format: `video/x-raw(me
 - The buffers are **linear** NV12. `vapostproc` only imports **tiled** NV12 DMABuf, so it will not link directly — route conversions through `glupload` / `gldownload` (GL) instead of VA, as shown below.
 
 ## Commands
+
+Some sample commands using only the proprietary stack components.
 
 ### Headless sanity check (no display)
 
