@@ -184,13 +184,13 @@ Where every module involved lives, and — if it has been merged upstream — si
 | | `hi556` | 6.10 |
 | | `ov02c10` | 6.16 |
 | | `ov02e10` | 6.16 |
+| | `imx471` | 7.1 |
 | | `hm11b1` | *out-of-tree* |
 | | `ov01a1s` | *out-of-tree* |
 | | `hm2170` | *out-of-tree* |
 | | `hm2172` | *out-of-tree* |
 | | `gc5035` | *out-of-tree* |
 | | `ov05c10` | *out-of-tree* |
-| | `imx471` | *out-of-tree* |
 | | `s5k3j1` | *out-of-tree* |
 | [intel/ipu7-drivers](https://github.com/intel/ipu7-drivers) | `intel-ipu7` | 6.17 | `dkms-ipu7`/`akmod-ipu7` |
 | | `intel-ipu7-isys` | 6.17 |
@@ -203,7 +203,7 @@ Where every module involved lives, and — if it has been merged upstream — si
 | | `i2c-ljca` | 6.7 |
 | | `spi-ljca` | 6.7 |
 
-So on a current Fedora kernel most of the stack is upstream — IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO and the mainlined sensors. What this stack still builds out-of-tree is: the two `*-psys` modules (`dkms-ipu6` / `dkms-ipu7` or their akmods), `intel_cvs` (`dkms-vision` / `akmod-vision`), and the camera sensors that were never upstreamed — `hm11b1`, `ov01a1s`, `hm2170`, `hm2172`, `gc5035`, `ov05c10`, `imx471`, `s5k3j1` (the last three only build on kernels ≥ 6.8 / 6.10). The sensor versions above are taken from the `ipu6-drivers` `dkms.conf` gating (there are no sensors in `ipu7-drivers`).
+So on a current Fedora kernel most of the stack is upstream — IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO and the mainlined sensors. What this stack still builds out-of-tree is: the two `*-psys` modules (`dkms-ipu6` / `dkms-ipu7` or their akmods), `intel_cvs` (`dkms-vision` / `akmod-vision`), and the camera sensors that are not upstreamed — `hm11b1`, `ov01a1s`, `hm2170`, `hm2172`, `gc5035`, `ov05c10`, `s5k3j1` (`ov05c10` builds only on kernels ≥ 6.8, `s5k3j1` only on ≥ 6.10). `imx471` is a special case: it reached mainline in 7.1, so `dkms-ipu6` / `akmod-ipu6` build the out-of-tree copy only in the 6.10–7.0 window and drop it from kernel 7.1 on. The sensor versions above are taken from the `ipu6-drivers` `dkms.conf` gating (there are no sensors in `ipu7-drivers`).
 
 The `ivsc-driver` repo also carries a few legacy/debug modules (`intel_vsc`, `mei_pse`, `mei_ace_debug`) that were never upstreamed and are not used here.
 
