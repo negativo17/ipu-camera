@@ -156,6 +156,8 @@ Its role is exactly the CVS role one generation earlier: it mediates sensor owne
 
 These are **mainline now**: the IVSC media drivers (`mei-vsc`, `ivsc-csi`, `ivsc-ace`) landed in Linux 6.8 and the LJCA bridge in 6.7, so on a current Fedora kernel there is no out-of-tree ivsc-driver / DKMS / akmod package in this stack — a recent kernel is enough. It is the IPU7-era successor, CVS / `intel_cvs`, that is still out-of-tree (see above).
 
+The IVSC/CVS split is no longer strictly generational, though. As of the `20260819` snapshots the IPU6 stack has started to speak CVS as well: `ipu6-camera-hal` now looks for a media entity named `Intel CVS` and only falls back to the legacy `Intel IVSC CSI` name, and the Meteor Lake (`ipu6epmtl`) `ov08x40-uf` configuration routes the sensor through it (`ov08x40` → `Intel CVS` → `Intel IPU6 CSI-2` instead of straight to the CSI-2 receiver). On the driver side the out-of-tree `ov05c10` stream-on and soft-standby register sequences were reworked to match the CVS firmware control flow. So an IPU6-generation machine can present a CVS-named sensing controller too, and the HAL now handles both entity names.
+
 ## The USB bridge: LJCA and USBIO
 
 On some IPU laptops the camera sensor's control interface (I2C) and its GPIO lines (power, reset, privacy) are not on the SoC's own I2C/GPIO controllers but sit behind a small USB-attached bridge, so the host (and the sensing controller) reaches the sensor over USB. There are two generations of that bridge, each with its own driver set:
