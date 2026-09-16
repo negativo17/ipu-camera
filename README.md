@@ -29,7 +29,7 @@ Either metapackage pulls in the full stack for both IPU6 and IPU7/IPU8. The comp
 
 - `ipu7-camera-hal` — the shared `libcamhal` adaptor plus the IPU7/IPU8 HAL plugins and per-platform configs. It automatically pulls in `ipu7-camera-bins` (firmware and proprietary binaries), which in turn pulls in `intel-ipu8-firmware`.
 - `ipu6-camera-hal` — the IPU6 HAL plugins and per-platform configs (`/usr/share/camera/`). Note that this package no longer ships a camera HAL of its own: the `libcamhal` adaptor comes from `ipu7-camera-hal`. It automatically pulls in `ipu6-camera-bins` (firmware and proprietary binaries).
-- `dkms-ipu7` / `akmod-ipu7` — the out-of-tree IPU7 kernel module (`intel-ipu7-psys`). These automatically pull in `dkms-vision` / `akmod-vision`, the Intel CVS (`intel_cvs`) sensing-controller module (see below).
+- `dkms-ipu7` / `akmod-ipu7` — the out-of-tree IPU7 kernel module (`intel-ipu7-psys`). The Intel CVS (`intel_cvs`) sensing-controller module they rely on is in the kernel since 7.2 and is no longer shipped here (see below).
 - `dkms-ipu6` / `akmod-ipu6` — the IPU6 kernel modules, including the sensor drivers.
 
 The `icamerasrc` GStreamer element is separate — it is not pulled in by the metapackages:
@@ -107,7 +107,7 @@ Since the shared `libcamhal-devel` package (built from `ipu7-camera-hal`) is the
 
 ## The CVS / vision sensing controller (IPU7 / Lunar Lake and newer)
 
-On Lunar Lake and newer there is an extra layer below the IPU: [intel/vision-drivers](https://github.com/intel/vision-drivers) is the Intel **CVS** (Camera Vision Sensing) controller driver — the successor to the older **IVSC** (Intel Visual Sensing Controller). It provides `intel_cvs.ko` and rides on the LJCA USB bridge (GPIO ACPI ID `INTC10B5`). It is packaged here as both `vision-kmod` (akmod) and `dkms-vision`.
+On Lunar Lake and newer there is an extra layer below the IPU: [intel/vision-drivers](https://github.com/intel/vision-drivers) is the Intel **CVS** (Camera Vision Sensing) controller driver — the successor to the older **IVSC** (Intel Visual Sensing Controller). It provides `intel_cvs.ko` and rides on the LJCA USB bridge (GPIO ACPI ID `INTC10B5`). It was packaged here as `vision-kmod` (akmod) and `dkms-vision` until it reached mainline in Linux 7.2; on a current kernel it comes from `kernel-modules` instead.
 
 What the module does, briefly: it drives the always-on vision sensing controller that sits between the MIPI sensor and the host IPU — handing sensor ownership from the controller to the host so the IPU can stream, driving the hardware privacy path (the privacy LED), and backing the low-power human-presence features (walk-away lock, adaptive dimming) that run without the host.
 
@@ -131,22 +131,22 @@ This is the same role as the `CONFIG_INTEL_VSC` path in the `ov02c10` sensor dri
 | Platform | IPU | Sensing controller | Driver |
 |---|---|---|---|
 | Tiger Lake / Alder Lake / Raptor Lake / Meteor Lake | IPU6 | IVSC | `mei-vsc` / `ivsc-csi` (mostly mainline now) |
-| Lunar Lake and newer | IPU7 / IPU8 | CVS | `intel/vision-drivers` (`intel_cvs.ko`), out-of-tree |
+| Lunar Lake and newer | IPU7 / IPU8 | CVS | `intel_cvs.ko`, mainline since 7.2 |
 
-So for the IPU7/IPU8 packages, camera enablement is not just IPU driver + sensor + HAL — on CVS-equipped machines you also need this CVS/vision driver + LJCA, or the camera never releases to the host. It is orthogonal to the libcamhal / PipeWire-plugin layer (that is all above libcamhal); it is a hard dependency lower in the stack. This is why `dkms-ipu7` requires `dkms-vision` and `ipu7-kmod` requires `vision-kmod`.
+So for the IPU7/IPU8 packages, camera enablement is not just IPU driver + sensor + HAL — on CVS-equipped machines you also need this CVS/vision driver + LJCA, or the camera never releases to the host. It is orthogonal to the libcamhal / PipeWire-plugin layer (that is all above libcamhal); it is a hard dependency lower in the stack. This is why `dkms-ipu7` and `ipu7-kmod` require a kernel new enough to carry `intel_cvs`, that is 7.2 or later.
 
 ### Mainline status
 
 Don't conflate two separate things:
 
 - The **IPU7 driver itself is mainline** as of Linux 6.17 (merged for Lunar Lake / Panther Lake webcams) — which is why `dkms-ipu7` / `ipu7-kmod` only build the out-of-tree `intel-ipu7-psys` module on ≥ 6.17 kernels.
-- The **CVS sensing-controller driver (`intel_cvs`) is not mainline** — it lives only in `intel/vision-drivers` (shipped here as DKMS/akmod). Intel issue [#36](https://github.com/intel/vision-drivers/issues/36) explicitly asks for it to be upstreamed, flagging it as "critical for IPU7 camera."
+- The **CVS sensing-controller driver (`intel_cvs`) is mainline since Linux 7.2**, as `drivers/media/i2c/cvs/intel_cvs.ko` in the `kernel-modules` package. Intel issue [#36](https://github.com/intel/vision-drivers/issues/36) had asked for exactly that, flagging it as "critical for IPU7 camera". Up to 7.1 it lived only in `intel/vision-drivers` and was shipped here as `dkms-vision` / `akmod-vision`; those packages are gone, and on a 7.2 kernel the in-tree module is used instead.
 
-So on CVS-equipped Lunar Lake / Panther Lake machines, even a kernel new enough to have IPU7 in-tree still needs the out-of-tree `intel_cvs` (+ LJCA/USBIO) to release the sensor to the host; without it the camera stays owned by the controller (LED stuck on, sensor invisible).
+Note that the out-of-tree module was installed under `/updates`, which takes precedence over the in-tree one, so on a 7.2 kernel DKMS would report `installed (Original modules exist)` and the kernel's own `intel_cvs` would be shadowed. That is the other reason for dropping the packages rather than just leaving them installed.
 
-It is also not just "load the module": reports on the tracker show it currently needs patches for real Lunar Lake bring-up — `SET_HOST_IDENTIFIER` returning `-EIO` on protocol 1.0 over the USBIO/I2C bridge, auto-release after probe so the LED doesn't stay on, and a `sensor_owner` sysfs re-acquire path. Expect to ship (and possibly carry patches on) `intel_cvs` via DKMS/akmod for the foreseeable future.
+So on CVS-equipped Lunar Lake / Panther Lake machines the whole chain is now in the kernel: IPU7 (6.17), `intel_cvs` (7.2) and LJCA/USBIO. Without the sensing controller the camera stays owned by it and never reaches the host (LED stuck on, sensor invisible), so a kernel older than 7.2 still needs an out-of-tree build.
 
-Two things worth confirming per target machine: (1) whether the IPU7/IPU8 laptop actually has CVS at all (some wire the sensor straight to the IPU), and (2) whether `intel_cvs` is still out-of-tree for the kernel baseline in use or has been upstreamed by then.
+One thing worth confirming per target machine: whether the IPU7/IPU8 laptop actually has CVS at all, since some wire the sensor straight to the IPU.
 
 ## The IVSC sensing controller (IPU6)
 
@@ -154,7 +154,7 @@ On the IPU6 generation the counterpart of CVS is the older **IVSC** (Intel Visua
 
 Its role is exactly the CVS role one generation earlier: it mediates sensor ownership between the always-on sensing controller and the host IPU and provides the hardware privacy path — the IPU can only stream once IVSC hands the sensor over.
 
-These are **mainline now**: the IVSC media drivers (`mei-vsc`, `ivsc-csi`, `ivsc-ace`) landed in Linux 6.8 and the LJCA bridge in 6.7, so on a current Fedora kernel there is no out-of-tree ivsc-driver / DKMS / akmod package in this stack — a recent kernel is enough. It is the IPU7-era successor, CVS / `intel_cvs`, that is still out-of-tree (see above).
+These are **mainline now**: the IVSC media drivers (`mei-vsc`, `ivsc-csi`, `ivsc-ace`) landed in Linux 6.8 and the LJCA bridge in 6.7, so on a current Fedora kernel there is no out-of-tree ivsc-driver / DKMS / akmod package in this stack — a recent kernel is enough. The IPU7-era successor, CVS / `intel_cvs`, followed in 7.2 (see above).
 
 The IVSC/CVS split is no longer strictly generational, though. As of the `20260819` snapshots the IPU6 stack has started to speak CVS as well: `ipu6-camera-hal` now looks for a media entity named `Intel CVS` and only falls back to the legacy `Intel IVSC CSI` name, and the Meteor Lake (`ipu6epmtl`) `ov08x40-uf` configuration routes the sensor through it (`ov08x40` → `Intel CVS` → `Intel IPU6 CSI-2` instead of straight to the CSI-2 receiver). On the driver side the out-of-tree `ov05c10` stream-on and soft-standby register sequences were reworked to match the CVS firmware control flow. So an IPU6-generation machine can present a CVS-named sensing controller too, and the HAL now handles both entity names.
 
@@ -173,7 +173,7 @@ Where every module involved lives, and — if it has been merged upstream — si
 
 | Project | Kernel module | In mainline since | Pacakge |
 |---|---|---|---|
-| [intel/vision-drivers](https://github.com/intel/vision-drivers) | `intel_cvs` | *out-of-tree* | `dkms-vision`/`akmod-vision` |
+| [intel/vision-drivers](https://github.com/intel/vision-drivers) | `intel_cvs` | 7.2 | in `kernel-modules` |
 | [intel/usbio-drivers](https://github.com/intel/usbio-drivers) | `usbio` | 6.18 | Not needed |
 | | `gpio-usbio` | 6.18 |
 | | `i2c-usbio` | 6.18 |
@@ -205,7 +205,7 @@ Where every module involved lives, and — if it has been merged upstream — si
 | | `i2c-ljca` | 6.7 |
 | | `spi-ljca` | 6.7 |
 
-So on a current Fedora kernel most of the stack is upstream — IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO and the mainlined sensors. What this stack still builds out-of-tree is: the two `*-psys` modules (`dkms-ipu6` / `dkms-ipu7` or their akmods), `intel_cvs` (`dkms-vision` / `akmod-vision`), and the camera sensors that are not upstreamed — `hm11b1`, `ov01a1s`, `hm2170`, `hm2172`, `gc5035`, `ov05c10`, `s5k3j1` (`ov05c10` builds only on kernels ≥ 6.8, `s5k3j1` only on ≥ 6.10). `imx471` is a special case: it reached mainline in 7.1, so `dkms-ipu6` / `akmod-ipu6` build the out-of-tree copy only in the 6.10–7.0 window and drop it from kernel 7.1 on. The sensor versions above are taken from the `ipu6-drivers` `dkms.conf` gating (there are no sensors in `ipu7-drivers`).
+So on a current Fedora kernel most of the stack is upstream — IPU6/IPU7 ISYS, `ipu-bridge`, IVSC, LJCA, USBIO and the mainlined sensors. What this stack still builds out-of-tree is: the two `*-psys` modules (`dkms-ipu6` / `dkms-ipu7` or their akmods) and the camera sensors that are not upstreamed — `hm11b1`, `ov01a1s`, `hm2170`, `hm2172`, `gc5035`, `ov05c10`, `s5k3j1` (`ov05c10` builds only on kernels ≥ 6.8, `s5k3j1` only on ≥ 6.10). `imx471` is a special case: it reached mainline in 7.1, so `dkms-ipu6` / `akmod-ipu6` build the out-of-tree copy only in the 6.10–7.0 window and drop it from kernel 7.1 on. The sensor versions above are taken from the `ipu6-drivers` `dkms.conf` gating (there are no sensors in `ipu7-drivers`).
 
 The `ivsc-driver` repo also carries a few legacy/debug modules (`intel_vsc`, `mei_pse`, `mei_ace_debug`) that were never upstreamed and are not used here.
 
