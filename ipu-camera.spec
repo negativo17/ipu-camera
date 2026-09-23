@@ -2,7 +2,7 @@
 
 Name:           ipu-camera
 Version:        1
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        Metapackages for the Intel IPU MIPI camera stack
 License:        MIT
 URL:            https://github.com/negativo17/ipu-camera
@@ -11,6 +11,8 @@ BuildArch:      noarch
 
 Source0:        README.md
 Source1:        libcamera.md
+Source2:        libcamhal-icamerasrc-v4l2.md
+Source3:        libcamhal-libcamera.md
 
 %description
 This package provides metapackages that pull in the complete Intel IPU MIPI
@@ -47,19 +49,22 @@ since 7.2 and is no longer built out of tree.
 
 %prep
 %setup -q -c -T
-install -p -m 0644 %{SOURCE0} %{SOURCE1} .
+install -p -m 0644 %{SOURCE0} %{SOURCE1} %{SOURCE2} %{SOURCE3} .
 
 %build
 
 %install
 
 %files dkms
-%doc README.md libcamera.md
+%doc *.md
 
 %files akmod
-%doc README.md libcamera.md
+%doc *.md
 
 %changelog
+* Wed Sep 23 2026 Simone Caronni <negativo17@gmail.com> - 1-6
+- Update documentation.
+
 * Wed Sep 16 2026 Simone Caronni <negativo17@gmail.com> - 1-5
 - Document that intel_cvs is in the kernel since 7.2.
 

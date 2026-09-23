@@ -1,12 +1,14 @@
 # Intel IPU cameras with libcamera
 
-Instead of the proprietary `libcamhal` stack documented in the [README](README.md), the same IPU6/IPU7 MIPI sensor can be driven by upstream **libcamera** through its *software ISP* (SoftISP): the kernel ISYS captures raw Bayer frames and libcamera debayers and applies a minimal 3A in userspace. No proprietary HAL, firmware imaging libraries or `icamerasrc` are involved.
+Instead of the proprietary `libcamhal` stack documented in [libcamhal-icamerasrc-v4l2.md](libcamhal-icamerasrc-v4l2.md), the same IPU6/IPU7 MIPI sensor can be driven by upstream **libcamera** through its *software ISP* (SoftISP): the kernel ISYS captures raw Bayer frames and libcamera debayers and applies a minimal 3A in userspace. No proprietary HAL, firmware imaging libraries or `icamerasrc` are involved.
+
+The libcamera package shipped with this stack carries a pipeline handler for `libcamhal`, and when `libcamhal` is installed the software ISP steps aside for the Intel IPU (see [libcamhal-libcamera.md](libcamhal-libcamera.md)). What follows applies when libcamera drives the camera through the software ISP instead: without `libcamhal`, on i686, or with upstream libcamera.
 
 This works for libcamera-native apps (e.g. GNOME Snapshot, `qcam`, `cam`), but on this hardware it has a number of issues. This file documents the limitations we hit so that users can decide between the two paths — and, if they stay on libcamera, apply the workarounds below.
 
 ## Test platform
 
-Same laptop as the [README](README.md): Raptor Lake i7-13800H, IPU6 `8086:a75d`, `ov02c10` sensor — but **hybrid graphics**: Intel iGPU (Mesa) + NVIDIA dGPU (proprietary driver), switchable via `switcherooctl`. The hybrid-GPU angle is what triggers most of the problems below.
+Same laptop as in [libcamhal-icamerasrc-v4l2.md](libcamhal-icamerasrc-v4l2.md): Raptor Lake i7-13800H, IPU6 `8086:a75d`, `ov02c10` sensor — but **hybrid graphics**: Intel iGPU (Mesa) + NVIDIA dGPU (proprietary driver), switchable via `switcherooctl`. The hybrid-GPU angle is what triggers most of the problems below.
 
 ## 1. Software-ISP EGL failure on the NVIDIA GPU
 
@@ -56,14 +58,16 @@ LIBCAMERA_SOFTISP_MODE=cpu
 
 `environment.d` is read by the systemd user session, so GUI apps launched from the session inherit it. Apps started outside the session (some launchers, or Chrome started from a non-session context) may need it exported another way (e.g. `/etc/profile.d`).
 
-## 2. Browsers: V4L2 vs PipeWire vs libcamera
+## 2. Browsers
 
-This is the real blocker for everyday use, and it is why the proprietary stack in this repo routes through a **v4l2loopback** device instead.
+Browsers see libcamera cameras through PipeWire:
 
-- **Chrome default (V4L2).** Chrome enumerates cameras from `/dev/video*` (V4L2). libcamera does **not** expose a V4L2 capture device, so a libcamera-only camera is simply invisible to Chrome out of the box.
-- **Chrome PipeWire path.** Enabling `chrome://flags/#enable-webrtc-pipewire-camera` switches Chrome to the PipeWire / xdg-desktop-portal camera path. In testing this did **not** reliably surface the libcamera camera, and it also *hid* the working v4l2loopback camera (Chrome then lists PipeWire sources only, not V4L2 devices) — so it traded one missing camera for another.
+- **Firefox** uses PipeWire cameras out of the box, so the libcamera camera is listed with no configuration.
+- **Chrome and Chromium** enumerate the V4L2 `/dev/video*` devices by default, and libcamera does not provide one. Enable `chrome://flags/#enable-webrtc-pipewire-camera` to switch to PipeWire cameras; the libcamera camera is then listed.
 
-### `pw-v4l2` shim — does not work with Chrome
+Applications that only speak V4L2 cannot use a libcamera camera. For those, the [`v4l2-relayd` bridge](libcamhal-icamerasrc-v4l2.md#use-as-a-standard-webcam-v4l2loopback) provides a real V4L2 device.
+
+### `pw-v4l2` is not a replacement for the Chrome flag
 
 `pw-v4l2` is an `LD_PRELOAD` shim that intercepts V4L2 syscalls and makes a PipeWire node appear as a `/dev/videoN` device to a V4L2-only app:
 
@@ -76,21 +80,10 @@ It does create a `/dev/videoN` node, but **Chrome rejects/ignores it**:
 - the shim does not implement all the ioctls Chrome's V4L2 capture requires (notably `VIDIOC_CREATE_BUFS` comes back unsupported), and
 - the emulated device's card metadata/capabilities don't match what Chrome expects from a real capture device,
 
-so Chrome drops it from the usable camera list. The frames are there on the PipeWire side, but Chrome never accepts the emulated V4L2 device to pull them.
-
-**Consequence:** for browsers, neither raw libcamera nor `pw-v4l2` is a working path. A real **v4l2loopback** device fed from the camera (the `icamerasrc` → `v4l2-relayd` bridge in the README) is what browsers actually accept, because it presents a genuine V4L2 capture device with the expected ioctls and metadata.
+so Chrome drops it from the usable camera list. Use the PipeWire camera flag instead.
 
 ## 3. Other limitations of the libcamera path
 
 - **No vendor 3A / tuning.** The proprietary HAL applies Intel's imaging (AEC/AGC, AWB, lens shading, the per-sensor `.aiqb` tuning). libcamera's SoftISP is a minimal debayer + basic 3A, so image quality is noticeably lower.
 - **CPU cost.** With Workaround B (CPU debayer) the debayer runs on the CPU for every frame; at higher resolutions/framerates this is significant.
-- **App coverage.** libcamera-native apps (GNOME Snapshot, `qcam`, `cam`) work once the EGL issue above is handled; the gap is everything that speaks V4L2 or expects a PipeWire camera — most notably browsers.
-
-## Summary
-
-| Concern                        | libcamera (SoftISP)                               | Proprietary stack (this repo)         |
-|--------------------------------|---------------------------------------------------|---------------------------------------|
-| Hybrid-GPU EGL crash           | `LIBCAMERA_SOFTISP_MODE=cpu` or Mesa EGL override | not affected (no SoftISP)             |
-| Image quality (3A/tuning)      | minimal                                           | full Intel imaging                    |
-| libcamera-native apps          | works                                             | via the HAL, not libcamera            |
-| Browsers (Chrome)              | not usable (no V4L2; `pw-v4l2` rejected)          | works via `icamerasrc` → v4l2loopback |
+- **App coverage.** libcamera-native and PipeWire applications (GNOME Snapshot, `qcam`, `cam`, Firefox, Chrome with PipeWire cameras enabled) work once the EGL issue above is handled; applications that only speak V4L2 do not.
